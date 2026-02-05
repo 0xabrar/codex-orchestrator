@@ -197,23 +197,42 @@ install_orchestrator() {
   info "Installing dependencies..."
   bun install
 
-  # Create symlink
-  local BIN_TARGET="/usr/local/bin/codex-agent"
+  # Add to PATH
+  local BIN_DIR="$INSTALL_DIR/bin"
+  local PATH_LINE="export PATH=\"$BIN_DIR:\$PATH\""
 
-  if [ -L "$BIN_TARGET" ] || [ -f "$BIN_TARGET" ]; then
-    info "codex-agent already on PATH at $BIN_TARGET"
+  if command -v codex-agent &>/dev/null; then
+    success "codex-agent already on PATH"
   else
-    info "Creating symlink: $BIN_TARGET -> $INSTALL_DIR/bin/codex-agent"
-    if sudo ln -sf "$INSTALL_DIR/bin/codex-agent" "$BIN_TARGET" 2>/dev/null; then
-      success "codex-agent linked to $BIN_TARGET"
-    else
-      warn "Could not create symlink (no sudo access)."
-      echo ""
-      echo "Add to your PATH manually:"
-      echo "  export PATH=\"$INSTALL_DIR/bin:\$PATH\""
-      echo ""
-      echo "Or add that line to your shell profile (~/.bashrc, ~/.zshrc, etc.)"
+    # Detect shell profile
+    local SHELL_PROFILE=""
+    if [ -n "$ZSH_VERSION" ] || [ "$SHELL" = "$(which zsh 2>/dev/null)" ]; then
+      SHELL_PROFILE="$HOME/.zshrc"
+    elif [ -f "$HOME/.bashrc" ]; then
+      SHELL_PROFILE="$HOME/.bashrc"
+    elif [ -f "$HOME/.bash_profile" ]; then
+      SHELL_PROFILE="$HOME/.bash_profile"
     fi
+
+    if [ -n "$SHELL_PROFILE" ]; then
+      # Check if already in profile
+      if grep -q "codex-orchestrator/bin" "$SHELL_PROFILE" 2>/dev/null; then
+        info "PATH entry already in $SHELL_PROFILE"
+      else
+        echo "" >> "$SHELL_PROFILE"
+        echo "# codex-orchestrator" >> "$SHELL_PROFILE"
+        echo "$PATH_LINE" >> "$SHELL_PROFILE"
+        success "Added to PATH in $SHELL_PROFILE"
+      fi
+    else
+      warn "Could not detect shell profile."
+      echo ""
+      echo "Add this line to your shell profile manually:"
+      echo "  $PATH_LINE"
+    fi
+
+    # Make it available in current session
+    export PATH="$BIN_DIR:$PATH"
   fi
 }
 

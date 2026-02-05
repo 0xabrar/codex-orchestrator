@@ -30,7 +30,7 @@ Clone and install:
 ```bash
 git clone https://github.com/kingbootoshi/codex-orchestrator.git ~/.codex-orchestrator
 cd ~/.codex-orchestrator && bun install
-sudo ln -sf "$HOME/.codex-orchestrator/bin/codex-agent" /usr/local/bin/codex-agent
+export PATH="$HOME/.codex-orchestrator/bin:$PATH"  # add to ~/.bashrc or ~/.zshrc
 ```
 
 ### Dependencies
@@ -54,7 +54,7 @@ codex --login
 # Install codex-orchestrator CLI
 git clone https://github.com/kingbootoshi/codex-orchestrator.git ~/.codex-orchestrator
 cd ~/.codex-orchestrator && bun install
-sudo ln -sf "$HOME/.codex-orchestrator/bin/codex-agent" /usr/local/bin/codex-agent
+export PATH="$HOME/.codex-orchestrator/bin:$PATH"  # add to ~/.bashrc or ~/.zshrc
 ```
 
 Or use the bundled installer:

@@ -50,8 +50,8 @@ codex --login                  # Authenticate with OpenAI
 git clone https://github.com/kingbootoshi/codex-orchestrator.git ~/.codex-orchestrator
 cd ~/.codex-orchestrator && bun install
 
-# Add to PATH
-sudo ln -sf "$HOME/.codex-orchestrator/bin/codex-agent" /usr/local/bin/codex-agent
+# Add to PATH (add this line to ~/.bashrc or ~/.zshrc)
+export PATH="$HOME/.codex-orchestrator/bin:$PATH"
 
 # Verify
 codex-agent health

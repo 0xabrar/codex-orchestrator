@@ -135,7 +135,9 @@ codex --login
 # 5. codex-orchestrator
 git clone https://github.com/kingbootoshi/codex-orchestrator.git ~/.codex-orchestrator
 cd ~/.codex-orchestrator && bun install
-sudo ln -sf "$HOME/.codex-orchestrator/bin/codex-agent" /usr/local/bin/codex-agent
+
+# 6. Add to PATH (add this line to ~/.bashrc or ~/.zshrc)
+export PATH="$HOME/.codex-orchestrator/bin:$PATH"
 ```
 
 **All dependencies use official sources only.** tmux from system package managers, Bun from bun.sh, Codex CLI from npm. No third-party scripts or unknown URLs.
