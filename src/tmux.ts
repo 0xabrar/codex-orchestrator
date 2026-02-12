@@ -53,7 +53,6 @@ export function createSession(options: {
   cwd: string;
 }): { sessionName: string; success: boolean; error?: string } {
   const sessionName = getSessionName(options.jobId);
-  const logFile = `${config.jobsDir}/${options.jobId}.log`;
 
   // Create prompt file to avoid shell escaping issues
   const promptFile = `${config.jobsDir}/${options.jobId}.prompt`;
@@ -62,7 +61,7 @@ export function createSession(options: {
 
   try {
     // Build the codex command (interactive mode)
-    // We use the interactive TUI so we can send messages later
+    // We use the interactive TUI so we can send messages later via send-keys
     const codexArgs = [
       `-c`, `model="${options.model}"`,
       `-c`, `model_reasoning_effort="${options.reasoningEffort}"`,
@@ -71,53 +70,16 @@ export function createSession(options: {
       `-s`, options.sandbox,
     ].join(" ");
 
-    // Create tmux session with codex running
-    // Use script to capture all output, and keep shell alive after codex exits
-    // This allows us to capture the output even after completion
-    // Create detached session that runs codex and stays open after it exits
-    // Using script to log all terminal output
-    const shellCmd = `script -q "${logFile}" codex ${codexArgs}; echo "\\n\\n[codex-agent: Session complete. Press Enter to close.]"; read`;
+    // Pass the initial prompt as a CLI argument using the prompt file.
+    // Previously we used tmux send-keys to type the prompt into the TUI,
+    // but that garbled text and caused agents to never start.
+    // Reading from the prompt file avoids all shell escaping issues.
+    const shellCmd = `codex ${codexArgs} "$(cat '${promptFile}')"; echo "\\n\\n[codex-agent: Session complete.]"; sleep 5`;
 
     execSync(
       `tmux new-session -d -s "${sessionName}" -c "${options.cwd}" '${shellCmd}'`,
       { stdio: "pipe", cwd: options.cwd }
     );
-
-    // Give codex a moment to initialize and show update prompt if any
-    spawnSync("sleep", ["1"]);
-
-    // Skip update prompt if it appears by sending "3" (skip until next version)
-    // Then Enter to dismiss any remaining prompts
-    execSync(`tmux send-keys -t "${sessionName}" "3"`, { stdio: "pipe" });
-    spawnSync("sleep", ["0.5"]);
-    execSync(`tmux send-keys -t "${sessionName}" Enter`, { stdio: "pipe" });
-    spawnSync("sleep", ["1"]);
-
-    // Send the prompt (read from file to handle complex prompts)
-    // Using send-keys with the prompt content
-    const promptContent = options.prompt.replace(/'/g, "'\\''"); // Escape single quotes
-
-    // For very long prompts, we'll type it in chunks or use a different approach
-    if (options.prompt.length < 5000) {
-      // Send prompt directly for shorter prompts
-      // Use separate send-keys calls for text and Enter to ensure Enter is processed
-      execSync(
-        `tmux send-keys -t "${sessionName}" '${promptContent}'`,
-        { stdio: "pipe" }
-      );
-      // Small delay to let TUI process the text before Enter
-      spawnSync("sleep", ["0.3"]);
-      execSync(
-        `tmux send-keys -t "${sessionName}" Enter`,
-        { stdio: "pipe" }
-      );
-    } else {
-      // For long prompts, use load-buffer approach
-      execSync(`tmux load-buffer "${promptFile}"`, { stdio: "pipe" });
-      execSync(`tmux paste-buffer -t "${sessionName}"`, { stdio: "pipe" });
-      spawnSync("sleep", ["0.3"]);
-      execSync(`tmux send-keys -t "${sessionName}" Enter`, { stdio: "pipe" });
-    }
 
     return { sessionName, success: true };
   } catch (err) {

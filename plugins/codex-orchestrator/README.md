@@ -1,26 +1,32 @@
 # Codex Orchestrator - Claude Code Plugin
 
-A Claude Code plugin that lets Claude orchestrate OpenAI Codex agents. Claude handles strategy and synthesis while Codex agents handle deep coding work in parallel tmux sessions.
+A Claude Code plugin that lets Claude orchestrate OpenAI Codex agents. Claude handles strategy and synthesis while Codex agents handle deep coding work in parallel tmux sessions, communicating progress via JSONL comms files.
 
 ## What It Does
 
 When installed, Claude gains the ability to:
 
 - **Spawn Codex agents** for research, implementation, review, and testing
-- **Monitor agent progress** via structured JSON output
+- **Monitor agent progress** via JSONL comms files written by each agent
 - **Redirect agents mid-task** when they need course correction
 - **Synthesize findings** from multiple parallel agents into clear results
-- **Follow a structured pipeline**: Ideation -> Research -> Synthesis -> PRD -> Implementation -> Review -> Testing
+- **Follow a structured workflow**: Brainstorm -> Decompose -> Execute
 
-You describe what you want. Claude breaks it into tasks, delegates to Codex agents, monitors progress, and reports back.
+You describe what you want. Claude explores the problem with research agents, decomposes it into a PRD with user stories and a dependency graph, then executes implementation in parallel -- all while monitoring agents through real-time comms.
 
 ## Installation
 
-### Via Marketplace
+### Via Plugin Marketplace
 
 ```
-/plugin marketplace add kingbootoshi/codex-orchestrator
+/plugin marketplace add 0xabrar/codex-orchestrator
 /plugin install codex-orchestrator
+```
+
+After install, run the setup script to install the CLI and all dependencies:
+
+```bash
+bash plugins/codex-orchestrator/scripts/install.sh
 ```
 
 ### Manual
@@ -28,74 +34,32 @@ You describe what you want. Claude breaks it into tasks, delegates to Codex agen
 Clone and install:
 
 ```bash
-git clone https://github.com/kingbootoshi/codex-orchestrator.git ~/.codex-orchestrator
+git clone https://github.com/0xabrar/codex-orchestrator.git ~/.codex-orchestrator
 cd ~/.codex-orchestrator && bun install
 export PATH="$HOME/.codex-orchestrator/bin:$PATH"  # add to ~/.bashrc or ~/.zshrc
-```
-
-### Dependencies
-
-The `codex-agent` CLI and its dependencies must be installed:
-
-```bash
-# Install tmux
-brew install tmux                  # macOS
-# sudo apt-get install -y tmux    # Ubuntu/Debian
-
-# Install Bun
-curl -fsSL https://bun.sh/install | bash
-
-# Install OpenAI Codex CLI
-npm install -g @openai/codex
-
-# Authenticate with OpenAI (required)
-codex --login
-
-# Install codex-orchestrator CLI
-git clone https://github.com/kingbootoshi/codex-orchestrator.git ~/.codex-orchestrator
-cd ~/.codex-orchestrator && bun install
-export PATH="$HOME/.codex-orchestrator/bin:$PATH"  # add to ~/.bashrc or ~/.zshrc
-```
-
-Or use the bundled installer:
-
-```bash
-bash plugins/codex-orchestrator/scripts/install.sh
 ```
 
 ## Usage
 
-The skill activates automatically when you ask Claude to do coding tasks:
+The plugin provides three modes:
 
 ```
-/codex-orchestrator
+/brainstorm   # explore problem, spawn research agents
+/decompose    # create PRD from design doc
+/execute      # parallel implementation from PRD
 ```
 
-Or just describe what you want:
-- "investigate the auth module for security issues"
-- "implement the feature from the PRD"
-- "review the recent changes"
-- "run tests and fix failures"
+- **Brainstorm**: Interactive exploration of the problem space. Claude spawns research agents that investigate different angles and report findings via JSONL comms files.
+- **Decompose**: Claude creates a PRD with user stories and a dependency graph, defining what needs to be built and in what order.
+- **Execute**: Parallel implementation driven by the PRD. Claude spawns coding agents, monitors comms files for completion, and synthesizes the results.
 
-Claude will spawn appropriate Codex agents and manage the process.
+## Comms System
 
-## The Pipeline
-
-```
-YOUR REQUEST
-     |
-     v
-[IDEATION] --> [RESEARCH] --> [SYNTHESIS] --> [PRD] --> [IMPLEMENTATION] --> [REVIEW] --> [TESTING]
-  Claude        Codex          Claude         Claude      Codex             Codex         Codex
-  + You         read-only                     + You       workspace-write   read-only     workspace-write
-```
-
-**Claude** handles strategic stages: ideation, synthesis, PRD creation.
-**Codex agents** handle execution stages: research, implementation, review, testing.
+Agents write JSONL updates to `/tmp/codex-agent/{jobId}.jsonl`. Claude watches these files in real-time to track progress, detect completion, and coordinate across parallel agents.
 
 ## Agent Timing
 
-Codex agents take time - this is normal and expected:
+Codex agents take time -- this is normal and expected:
 
 | Task Type | Typical Duration |
 |-----------|------------------|
@@ -108,9 +72,8 @@ Codex agents take time - this is normal and expected:
 The plugin uses the `codex-agent` CLI under the hood:
 
 ```bash
-codex-agent start "task" -r high --map -s read-only   # spawn
-codex-agent jobs --json                                # monitor
-codex-agent capture <id>                               # check output
+codex-agent start "task"                               # spawn agent
+codex-agent jobs --json                                # check all job statuses
 codex-agent send <id> "new instructions"               # redirect
 codex-agent kill <id>                                  # stop (last resort)
 ```

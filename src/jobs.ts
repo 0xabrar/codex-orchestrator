@@ -1,20 +1,25 @@
 // Job management for async codex agent execution with tmux
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, statSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { config, ReasoningEffort, SandboxMode } from "./config.ts";
 import { randomBytes } from "crypto";
-import { extractSessionId, findSessionFile, parseSessionFile, type ParsedSessionData } from "./session-parser.ts";
+import {
+  extractSessionId,
+  findSessionFile,
+  parseSessionFile,
+  type ParsedSessionData,
+} from "./session-parser.ts";
+import { getCommsPath, ensureCommsDir, readCommsFile, getLatestActivity } from "./comms.ts";
+import { type AgentType, buildPrompt } from "./templates.ts";
 import {
   createSession,
   killSession,
   sessionExists,
-  getSessionName,
   capturePane,
   captureFullHistory,
   isSessionActive,
   sendMessage,
-  sendControl,
 } from "./tmux.ts";
 
 export interface Job {
@@ -25,6 +30,7 @@ export interface Job {
   reasoningEffort: ReasoningEffort;
   sandbox: SandboxMode;
   parentSessionId?: string;
+  commsPath?: string;
   cwd: string;
   createdAt: string;
   startedAt?: string;
@@ -90,18 +96,9 @@ function computeElapsedMs(job: Job): number {
   return Math.max(0, endMs - startMs);
 }
 
-function getLogMtimeMs(jobId: string): number | null {
-  const logFile = join(config.jobsDir, `${jobId}.log`);
-  try {
-    return statSync(logFile).mtimeMs;
-  } catch {
-    return null;
-  }
-}
-
 function getLastActivityMs(job: Job): number | null {
-  const logMtime = getLogMtimeMs(job.id);
-  if (logMtime !== null) return logMtime;
+  const latestComms = getLatestActivity(job.id);
+  if (latestComms) return latestComms.getTime();
 
   const fallback = job.startedAt ?? job.createdAt;
   const fallbackMs = Date.parse(fallback);
@@ -117,25 +114,6 @@ function isInactiveTimedOut(job: Job): boolean {
   if (!lastActivityMs) return false;
 
   return Date.now() - lastActivityMs > timeoutMinutes * 60 * 1000;
-}
-
-function loadSessionData(jobId: string): ParsedSessionData | null {
-  const logFile = join(config.jobsDir, `${jobId}.log`);
-  let logContent: string;
-
-  try {
-    logContent = readFileSync(logFile, "utf-8");
-  } catch {
-    return null;
-  }
-
-  const sessionId = extractSessionId(logContent);
-  if (!sessionId) return null;
-
-  const sessionFile = findSessionFile(sessionId);
-  if (!sessionFile) return null;
-
-  return parseSessionFile(sessionFile);
 }
 
 export type JobsJsonEntry = {
@@ -159,25 +137,34 @@ export type JobsJsonOutput = {
   jobs: JobsJsonEntry[];
 };
 
+function getCompletedJobSessionData(job: Job): ParsedSessionData | null {
+  if (job.status !== "completed") return null;
+  if (!job.result) return null;
+
+  const sessionId = extractSessionId(job.result);
+  if (!sessionId) return null;
+
+  const sessionFile = findSessionFile(sessionId);
+  if (!sessionFile) return null;
+
+  const parsed = parseSessionFile(sessionFile);
+  if (!parsed) return null;
+
+  const hasMetadata =
+    parsed.tokens !== null ||
+    parsed.summary !== null ||
+    (Array.isArray(parsed.files_modified) && parsed.files_modified.length > 0);
+
+  return hasMetadata ? parsed : null;
+}
+
 export function getJobsJson(): JobsJsonOutput {
   const jobs = listJobs();
   const enriched = jobs.map((job) => {
     const refreshed = job.status === "running" ? refreshJobStatus(job.id) : null;
     const effective = refreshed ?? job;
     const elapsedMs = computeElapsedMs(effective);
-
-    let tokens: ParsedSessionData["tokens"] | null = null;
-    let filesModified: ParsedSessionData["files_modified"] | null = null;
-    let summary: string | null = null;
-
-    if (effective.status === "completed") {
-      const sessionData = loadSessionData(effective.id);
-      if (sessionData) {
-        tokens = sessionData.tokens;
-        filesModified = sessionData.files_modified;
-        summary = sessionData.summary ? truncateText(sessionData.summary, 500) : null;
-      }
-    }
+    const sessionData = getCompletedJobSessionData(effective);
 
     return {
       id: effective.id,
@@ -190,9 +177,9 @@ export function getJobsJson(): JobsJsonOutput {
       created_at: effective.createdAt,
       started_at: effective.startedAt ?? null,
       completed_at: effective.completedAt ?? null,
-      tokens,
-      files_modified: filesModified,
-      summary,
+      tokens: sessionData?.tokens ?? null,
+      files_modified: sessionData?.files_modified ?? null,
+      summary: sessionData?.summary ?? null,
     };
   });
 
@@ -218,6 +205,12 @@ export function deleteJob(jobId: string): boolean {
     } catch {
       // Prompt file may not exist
     }
+    // Clean up comms file
+    try {
+      unlinkSync(getCommsPath(jobId));
+    } catch {
+      // Comms file may not exist
+    }
     return true;
   } catch {
     return false;
@@ -231,10 +224,16 @@ export interface StartJobOptions {
   sandbox?: SandboxMode;
   parentSessionId?: string;
   cwd?: string;
+  type?: AgentType;
+  designDoc?: string;
+  prd?: string;
+  scope?: string[];
+  files?: string[];
 }
 
 export function startJob(options: StartJobOptions): Job {
   ensureJobsDir();
+  ensureCommsDir();
 
   const jobId = generateJobId();
   const cwd = options.cwd || process.cwd();
@@ -248,15 +247,27 @@ export function startJob(options: StartJobOptions): Job {
     sandbox: options.sandbox || config.defaultSandbox,
     parentSessionId: options.parentSessionId,
     cwd,
+    commsPath: getCommsPath(jobId),
     createdAt: new Date().toISOString(),
   };
 
   saveJob(job);
 
+  // Build full prompt with comms instructions, role, and task
+  const promptWithComms = buildPrompt({
+    type: options.type || "implementation",
+    task: options.prompt,
+    jobId,
+    files: options.files,
+    designDoc: options.designDoc,
+    prd: options.prd,
+    scope: options.scope,
+  });
+
   // Create tmux session with codex
   const result = createSession({
     jobId,
-    prompt: options.prompt,
+    prompt: promptWithComms,
     model: job.model,
     reasoningEffort: job.reasoningEffort,
     sandbox: job.sandbox,
@@ -300,54 +311,47 @@ export function sendToJob(jobId: string, message: string): boolean {
   return sendMessage(job.tmuxSession, message);
 }
 
-export function sendControlToJob(jobId: string, key: string): boolean {
-  const job = loadJob(jobId);
-  if (!job || !job.tmuxSession) return false;
-
-  return sendControl(job.tmuxSession, key);
-}
-
 export function getJobOutput(jobId: string, lines?: number): string | null {
   const job = loadJob(jobId);
   if (!job) return null;
 
-  // First try tmux capture if session exists
+  // Try tmux capture first if session exists
   if (job.tmuxSession && sessionExists(job.tmuxSession)) {
     const output = capturePane(job.tmuxSession, { lines });
     if (output) return output;
   }
 
-  // Fall back to log file
-  const logFile = join(config.jobsDir, `${jobId}.log`);
-  try {
-    const content = readFileSync(logFile, "utf-8");
+  // Fall back to comms file
+  const commsMessages = readCommsFile(jobId);
+  if (commsMessages.length > 0) {
+    const formatted = commsMessages.map(m => {
+      const time = m.ts ? new Date(m.ts).toLocaleTimeString() : "??:??";
+      switch (m.type) {
+        case "status": return `[${time}] status: ${m.msg}`;
+        case "finding": return `[${time}] FINDING: ${m.msg}`;
+        case "done": return `[${time}] DONE: ${m.summary}`;
+      }
+    });
     if (lines) {
-      const allLines = content.split("\n");
-      return allLines.slice(-lines).join("\n");
+      return formatted.slice(-lines).join("\n");
     }
-    return content;
-  } catch {
-    return null;
+    return formatted.join("\n");
   }
+
+  return null;
 }
 
 export function getJobFullOutput(jobId: string): string | null {
   const job = loadJob(jobId);
   if (!job) return null;
 
-  // First try tmux capture if session exists
+  // Try tmux capture if session exists
   if (job.tmuxSession && sessionExists(job.tmuxSession)) {
     const output = captureFullHistory(job.tmuxSession);
     if (output) return output;
   }
 
-  // Fall back to log file
-  const logFile = join(config.jobsDir, `${jobId}.log`);
-  try {
-    return readFileSync(logFile, "utf-8");
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export function cleanupOldJobs(maxAgeDays: number = 7): number {
@@ -377,17 +381,27 @@ export function refreshJobStatus(jobId: string): Job | null {
   if (!job) return null;
 
   if (job.status === "running" && job.tmuxSession) {
-    // Check if tmux session still exists
-    if (!sessionExists(job.tmuxSession)) {
-      // Session ended completely
+    // Check comms file first (more reliable than tmux capture-pane)
+    const commsMessages = readCommsFile(job.id);
+    const doneMsg = commsMessages.find(m => m.type === "done");
+    if (doneMsg && doneMsg.type === "done") {
       job.status = "completed";
       job.completedAt = new Date().toISOString();
-      const logFile = join(config.jobsDir, `${jobId}.log`);
-      try {
-        job.result = readFileSync(logFile, "utf-8");
-      } catch {
-        // No log file
+      job.result = doneMsg.summary;
+      // Clean up tmux session
+      if (job.tmuxSession && sessionExists(job.tmuxSession)) {
+        killSession(job.tmuxSession);
       }
+      saveJob(job);
+      return loadJob(jobId);
+    }
+
+    // Check if tmux session still exists
+    if (!sessionExists(job.tmuxSession)) {
+      // Session ended without done message - this is a failure
+      job.status = "failed";
+      job.error = "Session exited without completion";
+      job.completedAt = new Date().toISOString();
       saveJob(job);
     } else {
       // Session exists - check if codex is still running
@@ -396,11 +410,13 @@ export function refreshJobStatus(jobId: string): Job | null {
       if (output && output.includes("[codex-agent: Session complete")) {
         job.status = "completed";
         job.completedAt = new Date().toISOString();
-        // Capture full output
+        // Capture full output before killing session
         const fullOutput = captureFullHistory(job.tmuxSession);
         if (fullOutput) {
           job.result = fullOutput;
         }
+        // Clean up tmux session
+        killSession(job.tmuxSession);
         saveJob(job);
       } else if (isInactiveTimedOut(job)) {
         killSession(job.tmuxSession);

@@ -11,7 +11,7 @@ Stage: [ideation | research | synthesis | prd | implementation | review | testin
 Type: [research | implementation | review | testing]
 Prompt: [The prompt sent to the agent]
 Reasoning: [low | medium | high | xhigh]
-Sandbox: [read-only | workspace-write]
+Sandbox: [workspace-write | danger-full-access]
 Context: [Any relevant files included with -f]
 
 ### Complete: [jobId] - [time]

@@ -2,7 +2,7 @@
 
 import { glob } from "glob";
 import { readFileSync, statSync } from "fs";
-import { resolve, relative } from "path";
+import { relative } from "path";
 
 export interface FileContent {
   path: string;
@@ -13,7 +13,7 @@ export async function loadFiles(
   patterns: string[],
   baseDir: string = process.cwd()
 ): Promise<FileContent[]> {
-  const files: FileContent[] = [];
+  const files = new Map<string, FileContent>();
   const seen = new Set<string>();
 
   for (const pattern of patterns) {
@@ -45,7 +45,7 @@ export async function loadFiles(
         if (content.includes("\0")) continue;
 
         seen.add(match);
-        files.push({
+        files.set(match, {
           path: relative(baseDir, match),
           content,
         });
@@ -55,7 +55,9 @@ export async function loadFiles(
     }
   }
 
-  return files;
+  return Array.from(files.entries())
+    .filter(([path]) => seen.has(path))
+    .map(([, file]) => file);
 }
 
 export function estimateTokens(text: string): number {
@@ -77,23 +79,4 @@ export function formatPromptWithFiles(
   }
 
   return result;
-}
-
-export async function loadCodebaseMap(cwd: string): Promise<string | null> {
-  const mapPaths = [
-    resolve(cwd, "docs/CODEBASE_MAP.md"),
-    resolve(cwd, "CODEBASE_MAP.md"),
-    resolve(cwd, "docs/ARCHITECTURE.md"),
-  ];
-
-  for (const mapPath of mapPaths) {
-    try {
-      const content = readFileSync(mapPath, "utf-8");
-      return content;
-    } catch {
-      // Try next path
-    }
-  }
-
-  return null;
 }

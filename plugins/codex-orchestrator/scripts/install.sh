@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 INSTALL_DIR="${CODEX_ORCHESTRATOR_HOME:-$HOME/.codex-orchestrator}"
-REPO_URL="https://github.com/kingbootoshi/codex-orchestrator.git"
+REPO_URL="https://github.com/0xabrar/codex-orchestrator.git"
 
 info() { echo -e "${BLUE}[info]${NC} $1"; }
 success() { echo -e "${GREEN}[ok]${NC} $1"; }
@@ -257,9 +257,9 @@ verify() {
   success "Installation complete!"
   echo ""
   echo "Quick start:"
-  echo "  codex-agent start \"Review this codebase for issues\" --map"
+  echo "  codex-agent start \"Review this codebase for issues\""
   echo "  codex-agent jobs --json"
-  echo "  codex-agent capture <jobId>"
+  echo "  codex-agent watch-comms <jobId>"
   echo ""
 
   if ! command -v codex &>/dev/null; then
