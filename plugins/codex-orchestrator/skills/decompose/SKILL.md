@@ -20,10 +20,7 @@ This is pure Claude work — no Codex agents needed.
 
 Find the design doc:
 1. If the user specified a path, use that
-2. Otherwise, find the most recently committed file in `docs/plans/` matching `*-design.md`:
-   ```bash
-   git log --diff-filter=A --name-only --pretty=format: -- 'docs/plans/*-design.md' | head -1
-   ```
+2. Otherwise, find the most recent `*-design.md` file in `docs/plans/` by modification time
 3. If nothing found, ask the user for the path
 
 Read the design doc thoroughly before proceeding.
@@ -83,15 +80,16 @@ Draft the full PRD using the output format below.
 
 Show the user the full PRD draft. Ask for feedback and incorporate requested changes.
 
-## Step 6: Save and Commit
+## Step 6: Save
 
 After review feedback is incorporated, save the PRD to `docs/plans/prd-<feature-name>.md`.
 
-Commit the PRD to git. Tell the user:
+Tell the user:
 
-"PRD saved to `<path>`. Ready for execution.
+"Design doc: `<design-doc-path>`
+PRD saved to: `<prd-path>`
 
-To execute with Codex agents: `/execute`"
+Ready for execution. To execute with Codex agents: `/execute`"
 
 ## Output Format
 

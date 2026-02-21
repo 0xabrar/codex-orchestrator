@@ -32,44 +32,65 @@ You MUST complete these steps in order:
 2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 3. **Propose 2-3 approaches** — with trade-offs and your recommendation
 4. **Present design** — in sections scaled to their complexity, get user approval after each section
-5. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md` and commit
+5. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md`
 6. **Transition to decompose** — invoke the `decompose` skill to create PRD
 
-## Step 1: Explore Project Context
+## Step 1: Explore Project Context (Agent Teams)
 
-Spawn Codex research agents to understand the codebase before discussing with the user.
+Spawn Codex research agents **via agent teams** to understand the codebase before discussing with the user.
 
 **When to spawn agents vs answer inline:**
 - Quick factual question you already know → answer inline
 - Exploring architecture, patterns, multiple files, dependencies → spawn Codex agents
 
-**Spawning research agents:**
+**You are the team lead.** Create a team at the start of the brainstorm session, then spawn **teammates** (general-purpose Claude subagents) for each research task. Each teammate wraps exactly one Codex research session — it starts the agent, monitors it, and relays the result back to you.
+
+### Setting up the team
+
+Create a team once at the beginning of the brainstorm using `TeamCreate`. All research teammates join this team.
+
+### Spawning research teammates
+
+For each research question, spawn a teammate via the `Task` tool with `team_name` set to the team you created. Each teammate runs two commands sequentially:
+
+**Step A — Start the Codex agent:**
 ```bash
-codex-agent start --type research "Explore the project structure and identify key architectural patterns, dependencies, and conventions"
-codex-agent start --type research "Investigate the auth flow: trace every validation point and identify the data model"
+codex-agent start --type research "Explore the project structure and identify key architectural patterns"
 ```
 
-**Monitoring agents:**
+**Step B — Monitor until completion:**
 ```bash
-codex-agent jobs --json                # check status of all agents
-codex-agent monitor <jobId>            # block until agent completes (exits 0 on done, non-zero on failure)
+codex-agent monitor <jobId>
 ```
 
-Use `codex-agent monitor` when you want to wait for an agent to finish. It streams comms messages as they arrive and prints the result file path on completion. For a non-blocking check, use `codex-agent jobs --json`.
+**Step C — Relay result back:**
+When monitor exits, the teammate sends a message to you (the team lead) via `SendMessage` with:
+- The job ID
+- The exit status (success or failure)
+- The result file path: `/tmp/codex-agent/{jobId}-result.md`
 
-**When agents report findings:**
+### When teammates report findings
+
 - Read the result file at `/tmp/codex-agent/{jobId}-result.md` for the full detailed output
 - Synthesize findings — separate signal from noise
 - Use the synthesis to inform your conversation with the user
 - Do NOT dump raw agent output to the user — distill it
 
-**The research loop:**
+### The research loop
+
 ```
-discuss with user → identify unknowns → spawn agents → continue discussing →
-agents report back → read result files → synthesize findings → discuss informed by findings → repeat
+discuss with user → identify unknowns → spawn teammates → continue discussing →
+teammates report back → read result files → synthesize findings → discuss informed by findings → repeat
 ```
 
-You can have multiple research agents running simultaneously while you talk with the user.
+You can have multiple research teammates running simultaneously while you talk with the user. Spawn new teammates anytime you identify additional unknowns during the conversation.
+
+### Non-blocking status checks
+
+For a quick non-blocking check on all agents without waiting:
+```bash
+codex-agent jobs --json
+```
 
 ## Guidance: Wait vs Continue
 
@@ -117,7 +138,7 @@ Once you believe you understand what you're building:
 After the user approves the design:
 
 - Save to `docs/plans/YYYY-MM-DD-<topic>-design.md`
-- Commit the design document to git
+- **Always tell the user the exact path.** Say: "Design doc saved to `<path>`."
 
 ```markdown
 # [Feature Name] Design
@@ -140,7 +161,11 @@ After the user approves the design:
 
 ## Step 6: Transition to Decompose
 
-After the design doc is committed, invoke the **decompose** skill to break it into a PRD with user stories. Do NOT invoke any other skill.
+After saving the design doc, tell the user:
+
+"Design doc saved to `<path>`. Transitioning to /decompose to create the PRD."
+
+Then invoke the **decompose** skill to break it into a PRD with user stories. Do NOT invoke any other skill.
 
 ## Key Principles
 

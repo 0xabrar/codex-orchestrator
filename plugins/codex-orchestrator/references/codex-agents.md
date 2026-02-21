@@ -49,7 +49,7 @@ Not your job: implementing code yourself, extensive file reads, using Claude sub
 
 Use Claude subagents ONLY when the user explicitly requests it or for a quick single-file read for conversational context.
 
-Clarifying note: Claude teammates that run `codex-agent start` + `codex-agent monitor` and relay Codex results back are an intentional execute-skill exception and are allowed. These teammates are monitoring wrappers only. Do not delegate the actual coding, implementation, or research work to Claude subagents.
+Clarifying note: Claude teammates that run `codex-agent start` + `codex-agent monitor` and relay Codex results back are allowed in **any** skill (execute, brainstorm, etc.). These teammates are Codex monitoring wrappers only — they spawn a Codex agent, wait for it, and relay the result. Do not delegate the actual coding, implementation, or research work to Claude subagents.
 
 ## Prerequisites
 
