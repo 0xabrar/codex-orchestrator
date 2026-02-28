@@ -1,6 +1,12 @@
 // Prompt templates for different Codex agent types
 
-export type AgentType = "research" | "implementation" | "review" | "test";
+export type AgentType =
+  | "research"
+  | "implementation"
+  | "review"
+  | "test"
+  | "spec-review"
+  | "quality-review";
 
 export interface PromptOptions {
   type: AgentType;
@@ -10,6 +16,9 @@ export interface PromptOptions {
   designDoc?: string;
   prd?: string;
   scope?: string[];
+  implementationReport?: string;
+  storyCriteria?: string;
+  changedFiles?: string[];
 }
 
 const roleDescriptions: Record<AgentType, string> = {
@@ -21,9 +30,43 @@ const roleDescriptions: Record<AgentType, string> = {
     "You are a review agent. Perform code review for bugs, security issues, and code quality. Do not modify source files unless explicitly asked. Write findings to the comms file. When finished, write your full review to the result file and report completion.",
   test:
     "You are a test agent. Write and run tests for the specified code. Write status updates as you work. When done, write detailed test results to the result file, then report completion with the result file path.",
+  "spec-review":
+    "You are a spec compliance reviewer. Compare the implementation against the story spec and acceptance criteria. Read the actual code in the changed files and do not trust the implementation report by itself. Verify each acceptance criterion directly in code. Report PASS or FAIL for every criterion with specific file:line references. If any criterion fails, explain exactly what is missing or wrong.",
+  "quality-review":
+    "You are a code quality reviewer. Review the implementation for code quality, patterns, error handling, security, and test quality. Categorize issues as Critical, Important, or Minor and include file:line references for every issue. Acknowledge what was done well.",
 };
 
-const findingTypes: Set<AgentType> = new Set(["research", "review"]);
+const findingTypes: Set<AgentType> = new Set([
+  "research",
+  "review",
+  "spec-review",
+  "quality-review",
+]);
+
+export function buildDisciplinesBlock(): string {
+  return `## Disciplines
+
+### TDD (Test-Driven Development)
+- Write a failing test first, before writing any implementation code.
+- Run the test and verify it fails for the correct reason.
+- Write the minimal code needed to make the test pass.
+- Run the test again and verify it passes.
+- Refactor while keeping tests green.
+- If you wrote code without a test first, delete it and restart with a failing test.
+
+### Verification Before Completion
+- Run the full test suite before reporting done.
+- Include complete test output in the result file.
+- If any test fails, fix it before reporting done.
+- Do not claim "should work" without running the tests and proving it.
+
+### Systematic Debugging
+- Find the root cause before fixing.
+- Read errors carefully, including stack traces.
+- Reproduce the issue consistently before attempting a fix.
+- Form a single hypothesis and test it with the smallest possible change.
+- If 3 or more fix attempts fail, report findings and investigation notes rather than guessing.`;
+}
 
 export function buildCommsBlock(jobId: string, type: AgentType, resultFilePath?: string): string {
   const resultFile = resultFilePath || `/tmp/codex-agent/${jobId}-result.md`;
@@ -61,6 +104,8 @@ Report your progress using these commands:
 
 export function buildPrompt(options: PromptOptions): string {
   const sections: string[] = [];
+  const trimmedStoryCriteria = options.storyCriteria?.trim();
+  const trimmedImplementationReport = options.implementationReport?.trim();
 
   // 1. Comms instructions
   const resultFilePath = `/tmp/codex-agent/${options.jobId}-result.md`;
@@ -68,6 +113,37 @@ export function buildPrompt(options: PromptOptions): string {
 
   // 2. Role description
   sections.push(`## Role\n\n${roleDescriptions[options.type]}`);
+
+  if (options.type === "implementation") {
+    sections.push(buildDisciplinesBlock());
+  }
+
+  if (options.type === "spec-review") {
+    if (trimmedStoryCriteria) {
+      sections.push(`## Story Spec\n\n${trimmedStoryCriteria}`);
+    }
+    if (trimmedImplementationReport) {
+      sections.push(`## Implementation Report\n\n${trimmedImplementationReport}`);
+    }
+    if (options.changedFiles && options.changedFiles.length > 0) {
+      sections.push(`## Changed Files\n\n${options.changedFiles.join("\n")}`);
+    }
+
+    sections.push(`## Task\n\n${options.task}`);
+    return sections.join("\n\n");
+  }
+
+  if (options.type === "quality-review") {
+    if (trimmedImplementationReport) {
+      sections.push(`## Implementation Summary\n\n${trimmedImplementationReport}`);
+    }
+    if (options.changedFiles && options.changedFiles.length > 0) {
+      sections.push(`## Changed Files\n\n${options.changedFiles.join("\n")}`);
+    }
+
+    sections.push(`## Task\n\n${options.task}`);
+    return sections.join("\n\n");
+  }
 
   // 3. Context references
   const contextLines: string[] = [];
