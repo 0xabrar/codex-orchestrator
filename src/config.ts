@@ -8,6 +8,16 @@ export const config = {
   reasoningEfforts: ["low", "medium", "high", "xhigh"] as const,
   defaultReasoningEffort: "high" as const,
 
+  // Per-agent-type reasoning defaults (used when -r is not explicitly set)
+  defaultReasoningByType: {
+    research: "high",
+    implementation: "xhigh",
+    review: "high",
+    test: "high",
+    "spec-review": "high",
+    "quality-review": "high",
+  } as Record<string, "low" | "medium" | "high" | "xhigh">,
+
   // Sandbox modes
   sandboxModes: ["workspace-write", "danger-full-access"] as const,
   defaultSandbox: "workspace-write" as const,

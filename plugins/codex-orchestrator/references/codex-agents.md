@@ -86,7 +86,7 @@ bash ~/.codex-orchestrator/plugins/codex-orchestrator/scripts/install.sh
 | Setting | Default | Why |
 |---------|---------|-----|
 | Model | `gpt-5.3-codex` | Latest and most capable Codex model |
-| Reasoning | `high` | Strong reasoning depth |
+| Reasoning | Per agent type (see below) | Depth varies by role |
 | Sandbox | `workspace-write` | Agents can modify files by default |
 
 ## CLI Reference
@@ -139,7 +139,7 @@ codex-agent health                     # verify setup
 | Flag | Short | Values | Description |
 |------|-------|--------|-------------|
 | `--type` | | research, implementation, review, test, spec-review, quality-review | Agent role (default: implementation) |
-| `--reasoning` | `-r` | low, medium, high, xhigh | Reasoning depth |
+| `--reasoning` | `-r` | low, medium, high, xhigh | Reasoning depth (overrides type default) |
 | `--sandbox` | `-s` | workspace-write, danger-full-access | File access level |
 | `--file` | `-f` | glob | Include files (repeatable) |
 | `--dir` | `-d` | path | Working directory |
@@ -156,6 +156,19 @@ codex-agent health                     # verify setup
 - `test` — Test writing and execution. Agent writes/runs tests and reports results to the result file.
 - `spec-review` — Spec compliance review. Agent reads actual changed code, verifies each acceptance criterion, and reports PASS/FAIL with file:line references.
 - `quality-review` — Code quality review. Agent evaluates implementation quality, error handling, security, and tests. Findings are grouped by Critical, Important, and Minor with file:line references.
+
+**Default reasoning by agent type:**
+
+| Agent Type | Default Reasoning | Rationale |
+|---|---|---|
+| `implementation` | `xhigh` | Deepest reasoning for core coding work |
+| `research` | `high` | Exploration and analysis |
+| `review` | `high` | Code review |
+| `test` | `high` | Test writing and execution |
+| `spec-review` | `high` | Spec compliance verification |
+| `quality-review` | `high` | Code quality assessment |
+
+Use `-r` to override the default for any agent type.
 
 **`--file` on `comms done`:**
 When an agent completes, it can reference its result file instead of an inline summary:

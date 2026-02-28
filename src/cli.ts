@@ -134,6 +134,7 @@ function parseArgs(args: string[]): {
 
   const positional: string[] = [];
   let command = "";
+  let reasoningExplicit = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -148,6 +149,7 @@ function parseArgs(args: string[]): {
       const level = args[++i] as ReasoningEffort;
       if (config.reasoningEfforts.includes(level)) {
         options.reasoning = level;
+        reasoningExplicit = true;
       } else {
         console.error(`Invalid reasoning level: ${level}`);
         console.error(`Valid options: ${config.reasoningEfforts.join(", ")}`);
@@ -223,6 +225,11 @@ function parseArgs(args: string[]): {
         positional.push(arg);
       }
     }
+  }
+
+  // Apply per-agent-type reasoning default if -r wasn't explicitly set
+  if (!reasoningExplicit && options.agentType in config.defaultReasoningByType) {
+    options.reasoning = config.defaultReasoningByType[options.agentType];
   }
 
   return { command, positional, options };
