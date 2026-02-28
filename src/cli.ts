@@ -50,7 +50,7 @@ Options:
   -s, --sandbox <mode>       Sandbox: workspace-write, danger-full-access
   -f, --file <glob>          Include files matching glob (can repeat)
   -d, --dir <path>           Working directory (default: cwd)
-  --type <type>              Agent type: research, implementation, review, test (default: implementation)
+  --type <type>              Agent type: research, implementation, review, test, spec-review, quality-review (default: implementation)
   --parent-session <id>      Parent session ID for linkage
   --dry-run                  Show prompt without executing
   --comms                    Show comms messages instead of tmux output (capture only)
@@ -198,7 +198,14 @@ function parseArgs(args: string[]): {
     } else if (arg === "--all") {
       options.jobsAll = true;
     } else if (arg === "--type") {
-      const validTypes = ["research", "implementation", "review", "test"];
+      const validTypes = [
+        "research",
+        "implementation",
+        "review",
+        "test",
+        "spec-review",
+        "quality-review",
+      ];
       const typeVal = args[++i];
       if (!validTypes.includes(typeVal)) {
         console.error(`Invalid agent type: ${typeVal}`);
