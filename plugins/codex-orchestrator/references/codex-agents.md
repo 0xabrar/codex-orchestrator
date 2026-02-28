@@ -49,7 +49,7 @@ Not your job: implementing code yourself, extensive file reads, using Claude sub
 
 Use Claude subagents ONLY when the user explicitly requests it or for a quick single-file read for conversational context.
 
-Clarifying note: Claude teammates that run `codex-agent start` + `codex-agent monitor` and relay Codex results back are allowed in **any** skill (execute, brainstorm, etc.). These teammates are Codex monitoring wrappers only — they spawn a Codex agent, wait for it, and relay the result. Do not delegate the actual coding, implementation, or research work to Claude subagents.
+Clarifying note: Claude teammates that run `codex-agent start` + `codex-agent monitor` and relay Codex results back are an intentional execute-skill exception and are allowed. These teammates are monitoring wrappers only. Do not delegate the actual coding, implementation, or research work to Claude subagents.
 
 ## Prerequisites
 
@@ -97,6 +97,8 @@ codex-agent start "Investigate auth flow for vulnerabilities" --type research
 codex-agent start "Implement the auth refactor per PRD" --type implementation -f "docs/prds/auth-refactor.md"
 codex-agent start "Review these modules" --type review -f "src/auth/**/*.ts"
 codex-agent start "Write integration tests for auth" --type test -f "src/auth/**/*.ts"
+codex-agent start "Verify Story 4 acceptance criteria against changed files" --type spec-review -f "src/templates.ts"
+codex-agent start "Assess Story 4 code quality and test quality" --type quality-review -f "src/templates.ts"
 ```
 
 ### Monitoring Agents
@@ -136,7 +138,7 @@ codex-agent health                     # verify setup
 
 | Flag | Short | Values | Description |
 |------|-------|--------|-------------|
-| `--type` | | research, implementation, review, test | Agent role (default: implementation) |
+| `--type` | | research, implementation, review, test, spec-review, quality-review | Agent role (default: implementation) |
 | `--reasoning` | `-r` | low, medium, high, xhigh | Reasoning depth |
 | `--sandbox` | `-s` | workspace-write, danger-full-access | File access level |
 | `--file` | `-f` | glob | Include files (repeatable) |
@@ -152,6 +154,8 @@ codex-agent health                     # verify setup
 - `implementation` — Code changes. Default type. Agent implements the task and writes a change summary to the result file.
 - `review` — Code review. Agent does not modify source files. Writes review findings to comms and result file.
 - `test` — Test writing and execution. Agent writes/runs tests and reports results to the result file.
+- `spec-review` — Spec compliance review. Agent reads actual changed code, verifies each acceptance criterion, and reports PASS/FAIL with file:line references.
+- `quality-review` — Code quality review. Agent evaluates implementation quality, error handling, security, and tests. Findings are grouped by Critical, Important, and Minor with file:line references.
 
 **`--file` on `comms done`:**
 When an agent completes, it can reference its result file instead of an inline summary:
@@ -159,6 +163,35 @@ When an agent completes, it can reference its result file instead of an inline s
 codex-agent comms done <jobId> --file /tmp/codex-agent/<jobId>-result.md
 ```
 The CLI reads the file, extracts a summary from the first heading or line, and writes a `done` comms message with a `resultFile` field pointing to the full output.
+
+## Review Pipeline
+
+Use a multi-stage review loop per story. Start reviews as soon as each implementation agent completes; do not wait for the whole batch.
+
+```text
+Implementation Agent
+  -> Spec-Review Agent
+     -> PASS all criteria: Quality-Review Agent
+        -> No Critical findings: Story DONE
+        -> Critical findings: Fix Agent -> re-run quality review (max 2 fix cycles)
+     -> Any FAIL criteria: Fix Agent -> re-run spec review (max 2 fix cycles)
+```
+
+Rules:
+- A story is done only after it passes both spec review and quality review.
+- If a stage still fails after 2 fix cycles, escalate unresolved issues to the user and stop that story.
+- Fix work is usually spawned as an `implementation` agent with the failed review findings included in its prompt.
+
+### Information Flow Between Agents
+
+Agents do not talk directly to each other. The orchestrator passes context through result files:
+
+1. Implementation agent writes `/tmp/codex-agent/{jobId}-result.md`.
+2. Orchestrator reads that result file and includes relevant excerpts in the spec-review prompt (plus story criteria and changed files).
+3. Spec-review agent writes its result file; orchestrator reads it.
+4. If spec passes, orchestrator spawns quality-review with implementation context and changed files.
+5. If either review fails, orchestrator spawns a fix agent and includes both the implementation report and review findings in the fix prompt.
+6. Fix agent writes a new result file; orchestrator re-runs the failed review stage.
 
 ## Result File Protocol
 
@@ -217,6 +250,9 @@ This is the preferred way for teammates to wait on an agent. No polling loop nee
 |-----------|------------------|
 | Simple research | 10-20 minutes |
 | Implementation (single feature) | 20-40 minutes |
+| Spec review | 10-20 minutes |
+| Quality review | 10-20 minutes |
+| Fix agent | 15-30 minutes |
 | Complex implementation | 30-60+ minutes |
 | Full PRD implementation | 45-90+ minutes |
 
