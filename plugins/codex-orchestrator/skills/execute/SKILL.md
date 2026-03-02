@@ -45,10 +45,10 @@ Understand stories, acceptance criteria, and batch dependencies.
 
 ### 2. Start implementation teammates for the first unblocked batch
 
-For each unblocked story, spawn one implementation teammate.
+For each unblocked story, spawn one implementation teammate. Do NOT use the `-f` flag to embed file content into the prompt — large file context crashes the codex CLI. Instead, reference file paths in the prompt text. The codex agent can read files from the workspace on its own.
 
 ```bash
-codex-agent start --type implementation "Implement Story 1: [title]. [description]. Acceptance criteria: [criteria]." -f "docs/plans/design.md" -f "docs/plans/prd-feature.md"
+codex-agent start --type implementation "Implement Story 1: [title]. [description]. Acceptance criteria: [criteria]. Read the design doc at docs/plans/design.md and the PRD at docs/plans/prd-feature.md for full context."
 codex-agent monitor <implJobId>
 ```
 
@@ -69,14 +69,14 @@ Implementation done
 
 ### 4. Information flow between stages (orchestrator as memory)
 
-Agents do not communicate directly. You pass context forward:
+Agents do not communicate directly. You pass context forward by referencing result file paths. Do NOT embed result file contents into prompts — just tell the agent where to read them.
 
-1. Read implementation result file: `/tmp/codex-agent/{implJobId}-result.md`
-2. Paste relevant implementation details into the spec-review prompt
-3. Read spec-review result file and, if failing, paste failures + implementation context into a fix prompt
-4. Re-run spec review with updated implementation result
-5. After spec passes, run quality review using implementation result + changed files
-6. If quality has Critical issues, paste quality findings + implementation context into a fix prompt, then re-run quality review
+1. Implementation writes result to `/tmp/codex-agent/{implJobId}-result.md`
+2. Tell spec-review agent to read the implementation result file at that path
+3. Spec-review writes its result; if failing, tell fix agent to read both the implementation and review result files
+4. Re-run spec review after fix
+5. After spec passes, tell quality-review agent to read the implementation result file
+6. If quality has Critical issues, tell fix agent to read both result files, then re-run quality review
 
 ### 5. Concrete review/fix command examples
 
@@ -84,61 +84,47 @@ Use these patterns when building teammate commands.
 
 **Spec-review agent:**
 ```bash
-impl_job="<implJobId>"
-impl_report="$(cat /tmp/codex-agent/${impl_job}-result.md)"
-
 codex-agent start --type spec-review "Story: Story 4 - Add multi-stage review pipeline.
 Acceptance criteria:
 - [criterion 1]
 - [criterion 2]
 - [criterion 3]
 
-Implementation report from ${impl_job}:
-${impl_report}
+Read the implementation report at /tmp/codex-agent/<implJobId>-result.md for context.
+Read the PRD at docs/plans/prd-feature.md for the full spec.
 
 Changed files:
 - plugins/codex-orchestrator/skills/execute/SKILL.md
 
 Review every acceptance criterion against the ACTUAL code.
-Return PASS/FAIL per criterion with file:line evidence." -f "docs/plans/prd-superpowers-disciplines.md"
+Return PASS/FAIL per criterion with file:line evidence."
 codex-agent monitor <specReviewJobId>
 ```
 
 **Quality-review agent:**
 ```bash
-impl_job="<implJobId>"
-impl_report="$(cat /tmp/codex-agent/${impl_job}-result.md)"
-
 codex-agent start --type quality-review "Review Story 4 implementation quality.
-Implementation summary:
-${impl_report}
+
+Read the implementation report at /tmp/codex-agent/<implJobId>-result.md for context.
 
 Changed files:
 - plugins/codex-orchestrator/skills/execute/SKILL.md
 
 Categorize findings as Critical, Important, Minor.
-Include file:line references for every issue." -f "docs/plans/prd-superpowers-disciplines.md"
+Include file:line references for every issue."
 codex-agent monitor <qualityReviewJobId>
 ```
 
 **Fix agent (used for spec failures and quality issues):**
 ```bash
-impl_job="<implJobId>"
-review_job="<reviewJobId>"
-impl_report="$(cat /tmp/codex-agent/${impl_job}-result.md)"
-review_findings="$(cat /tmp/codex-agent/${review_job}-result.md)"
-
 codex-agent start --type implementation "Fix Story 4 issues from review.
 Story acceptance criteria:
 - [criterion list]
 
-Current implementation report:
-${impl_report}
+Read the implementation report at /tmp/codex-agent/<implJobId>-result.md.
+Read the review findings at /tmp/codex-agent/<reviewJobId>-result.md.
 
-Review findings to resolve:
-${review_findings}
-
-Apply minimal changes, run tests, and update the story result with what changed." -f "docs/plans/prd-superpowers-disciplines.md"
+Apply minimal changes, run tests, and update the story result with what changed."
 codex-agent monitor <fixJobId>
 ```
 
@@ -177,7 +163,7 @@ Each teammate performs `codex-agent start`, then `codex-agent monitor`, then sen
 After all batches finish (done or escalated), spawn one full changeset review agent to catch cross-story integration issues and architecture inconsistencies.
 
 ```bash
-codex-agent start --type review "Review the full changeset across all completed stories. Focus on cross-story regressions, integration issues, architectural consistency, and missed edge cases. Provide prioritized findings with file:line references." -f "docs/plans/prd-superpowers-disciplines.md"
+codex-agent start --type review "Review the full changeset across all completed stories. Read the PRD at docs/plans/prd-feature.md for context. Focus on cross-story regressions, integration issues, architectural consistency, and missed edge cases. Provide prioritized findings with file:line references."
 codex-agent monitor <finalReviewJobId>
 ```
 
@@ -196,11 +182,15 @@ Summarize key outcomes for the user. Distill the signal from result files; do no
 ## Story-to-Agent Mapping
 
 - One implementation Codex agent per story (default)
-- Include the design doc and PRD as file context for every agent
-- Write clear prompts: story title, description, acceptance criteria
+- Reference design doc and PRD paths in the prompt text — do NOT use `-f` to embed file content
+- Write clear prompts: story title, description, acceptance criteria, and file paths to read
 - Start review pipeline immediately when each implementation result arrives
 - A story is not done until it passes both spec and quality review stages
 - Each agent writes detailed output to `/tmp/codex-agent/{jobId}-result.md`
+
+## CRITICAL: Never use `-f` flag
+
+The `-f` flag embeds entire file contents into the prompt. Large prompts (>50KB) crash the codex CLI. Instead, tell the agent to read files by path — codex agents have full workspace access and can read any file themselves.
 
 ## When NOT to Use This Pipeline
 

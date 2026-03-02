@@ -92,13 +92,16 @@ bash ~/.codex-orchestrator/plugins/codex-orchestrator/scripts/install.sh
 ## CLI Reference
 
 ### Spawning Agents
+
+**IMPORTANT:** Do NOT use `-f` to embed file content into prompts. Large prompts (>50KB) crash the codex CLI. Instead, reference file paths in the prompt text — agents have workspace access and can read files themselves.
+
 ```bash
-codex-agent start "Investigate auth flow for vulnerabilities" --type research
-codex-agent start "Implement the auth refactor per PRD" --type implementation -f "docs/prds/auth-refactor.md"
-codex-agent start "Review these modules" --type review -f "src/auth/**/*.ts"
-codex-agent start "Write integration tests for auth" --type test -f "src/auth/**/*.ts"
-codex-agent start "Verify Story 4 acceptance criteria against changed files" --type spec-review -f "src/templates.ts"
-codex-agent start "Assess Story 4 code quality and test quality" --type quality-review -f "src/templates.ts"
+codex-agent start "Investigate auth flow for vulnerabilities. Read src/auth/**/*.ts" --type research
+codex-agent start "Implement the auth refactor. Read the PRD at docs/prds/auth-refactor.md for full context." --type implementation
+codex-agent start "Review modules in src/auth/**/*.ts for bugs and security issues." --type review
+codex-agent start "Write integration tests for auth. Read src/auth/**/*.ts" --type test
+codex-agent start "Verify Story 4 acceptance criteria against src/templates.ts" --type spec-review
+codex-agent start "Assess Story 4 code quality in src/templates.ts" --type quality-review
 ```
 
 ### Monitoring Agents
